@@ -12,5 +12,5 @@ DATASET_GROUPS=(
     )
 
 for GROUP_NAME in ${DATASET_GROUPS[@]}; do
-    python mmlu_verl_format.py --group_name ${GROUP_NAME}
+    python -m util.mmlu_verl_format --group_name ${GROUP_NAME}
 done

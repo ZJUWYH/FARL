@@ -161,7 +161,7 @@ for model_pair in "${MODEL_PAIRS[@]}"; do
 
             # --- STAGE 2: Calculate COT ACC ---
             echo "--- Stage 2: Calculating COT ACC ---"
-            python cot_acc_analysis.py --dataset_name "$DATASET_NAME" --model_name "$CURRENT_MODEL_NAME" --short_model_name "$CURRENT_SHORT_MODEL_NAME" --group_name "$GROUP"
+            python -m util.cot_acc_analysis --dataset_name "$DATASET_NAME" --model_name "$CURRENT_MODEL_NAME" --short_model_name "$CURRENT_SHORT_MODEL_NAME" --group_name "$GROUP"
             echo "--- Stage 2 Complete ---"
             echo
 

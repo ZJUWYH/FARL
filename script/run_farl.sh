@@ -96,7 +96,7 @@ for model_pair in "${MODEL_PAIRS[@]}"; do
             actor_rollout_ref.ref.fsdp_config.param_offload=True \
             algorithm.use_kl_in_reward=False \
             +algorithm.npo_coef=0.01 \
-            custom_reward_function.path=costom_reward.py \
+            custom_reward_function.path=util/costom_reward.py \
             custom_reward_function.name=MMLURewardFunction_v2 \
             trainer.critic_warmup=0 \
             trainer.default_local_dir=${SAVE_PATH} \

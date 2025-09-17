@@ -9,7 +9,7 @@ import argparse  # 新增：导入argparse库
 from tqdm import tqdm
 import wandb
 from dataclasses import asdict
-from data_group import FIELDS_GROUP_DIC
+from util.data_group import FIELDS_GROUP_DIC
 from transformers import AutoTokenizer
 
 # Robust boolean parser for argparse

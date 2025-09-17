@@ -1,11 +1,9 @@
-0.4.1.dev0
-
 
 # Reasoning or Retrieval? A Study of Answer Attribution on Large Reasoning Models
 
 This is the offical implemation of "Reasoning or Retrieval? A Study of Answer Attribution on Large Reasoning Models".
 <!-- ![](pipeline.png) -->
-<img src="framework.png" width="60%">
+<img src="frameworkv2.png" width="60%">
 
 ## 🛠️ Setup
 

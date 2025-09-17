@@ -4,7 +4,7 @@ from datasets import load_dataset, concatenate_datasets
 from openai import AsyncOpenAI
 import argparse  # ## 1. 新增：导入argparse库
 import wandb  # ## 2. 新增：导入wandb库
-from data_group import FIELDS_GROUP_DIC
+from util.data_group import FIELDS_GROUP_DIC
 
 # --- 1. 配置参数 ---
 VLLM_BASE_URL = "http://localhost:8001/v1"  # vLLM服务地址

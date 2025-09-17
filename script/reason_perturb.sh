@@ -153,7 +153,7 @@ for model_pair in "${MODEL_PAIRS[@]}"; do
                 wait_for_server || { echo "Server failed to start, skipping to next iteration."; shutdown_vllm_server; continue; }
 
                 echo "Running the normal choice inference script..."
-                python normal_model_infer.py --dataset_name "$DATASET_NAME" --group_name "$GROUP" --model_name "$CURRENT_MODEL_NAME" --short_model_name "$CURRENT_SHORT_MODEL_NAME"
+                python -m perturb.normal_model_infer --dataset_name "$DATASET_NAME" --group_name "$GROUP" --model_name "$CURRENT_MODEL_NAME" --short_model_name "$CURRENT_SHORT_MODEL_NAME"
                 CLIENT_EXIT_CODE=$?
                 echo "Client script finished with exit code $CLIENT_EXIT_CODE."
 
@@ -170,7 +170,7 @@ for model_pair in "${MODEL_PAIRS[@]}"; do
                 # --- STAGE 2: Generate Wrong Answers---
                 echo "--- Stage 2: Generating Wrong Answers ---"
                 echo "Identifying wrong answers..."
-                python indentify_target_answer.py --dataset_name "$DATASET_NAME" --group_name "$GROUP" --model_name "$CURRENT_MODEL_NAME" --short_model_name "$CURRENT_SHORT_MODEL_NAME"
+                python -m perturb.indentify_target_answer --dataset_name "$DATASET_NAME" --group_name "$GROUP" --model_name "$CURRENT_MODEL_NAME" --short_model_name "$CURRENT_SHORT_MODEL_NAME"
                 echo "Done generating wrong answers."
                 echo "--- Stage 2 Complete ---"
                 echo
@@ -183,7 +183,7 @@ for model_pair in "${MODEL_PAIRS[@]}"; do
             wait_for_server || { echo "Server failed to start, skipping to next iteration."; shutdown_vllm_server; continue; }
 
             echo "Running the perturbed model inference script..."
-            python reason_perturb.py --dataset_name "$DATASET_NAME" --group_name "$GROUP" --model_name "$CURRENT_MODEL_NAME" --short_model_name "$CURRENT_SHORT_MODEL_NAME" --cot_memory_perturb_same False
+            python -m perturb.reason_perturb --dataset_name "$DATASET_NAME" --group_name "$GROUP" --model_name "$CURRENT_MODEL_NAME" --short_model_name "$CURRENT_SHORT_MODEL_NAME" --cot_memory_perturb_same False
             CLIENT_EXIT_CODE=$?
             echo "Client script finished with exit code $CLIENT_EXIT_CODE."
 

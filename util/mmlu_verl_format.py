@@ -21,7 +21,7 @@ from tqdm import tqdm
 from peft import LoraConfig, get_peft_model, TaskType, prepare_model_for_kbit_training
 from openai import OpenAI
 import argparse
-from data_group import FIELDS_GROUP_DIC
+from util.data_group import FIELDS_GROUP_DIC
 
 DATASET_NAME = "cais/mmlu"
 
