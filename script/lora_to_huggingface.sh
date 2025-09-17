@@ -2,14 +2,13 @@
 
 # LoRA to HuggingFace Model Converter
 # This script converts LoRA checkpoints to full models by merging adapter weights
-# bash /data/yuhui/8/memory-perturb/script/lora_to_huggingface.sh
 
 set -e  # Exit on any error
 
 # Edit these paths as needed
-BASE_MODEL_PATH="deepseek-ai/DeepSeek-R1-Distill-Qwen-32B"  # Path to the base model
-LORA_CHECKPOINT_PATH="/data/yuhui/8/memory-perturb/ckpt/cais/mmlu_Computing_test_r1qwen32b_perturbed/checkpoint-1830"  # Path to the LoRA checkpoint/adapter
-OUTPUT_PATH="/data/yuhui/8/memory-perturb/ckpt/cais/mmlu_Computing_test_r1qwen32b_perturbed"  # Output path for the merged model
+BASE_MODEL_PATH=""  # Path to the base model
+LORA_CHECKPOINT_PATH=""  # Path to the LoRA checkpoint/adapter
+OUTPUT_PATH=""  # Output path for the merged model
 
 echo "=== LoRA to HuggingFace Model Converter ==="
 echo "Base model: $BASE_MODEL_PATH"

@@ -1,8 +1,8 @@
 # Tested successfully on the hiyouga/verl:ngc-th2.6.0-cu126-vllm0.8.4-flashinfer0.2.2-cxx11abi0 image.
 # It outperforms the Qwen2 7B base model by two percentage points on the test set of GSM8K.
-# bash /data/yuhui/8/memory-perturb/script/run_verl_rl_npo.sh
+# bash script/run_grpo.sh
 # ts=$(date +%Y%m%d_%H%M%S)
-# screen -dmS rl bash -c "bash /data/yuhui/8/memory-perturb/script/run_verl_rl_npo.sh > /data/yuhui/8/memory-perturb/log/rl_log_$ts.log 2>&1"
+# screen -dmS rl bash -c "bash script/run_grpo.sh > log/rl_log_$ts.log 2>&1"
 # batchsize is the over all batchsize
 # miu = batch/ppo_mini_batch_size
 # ppo_micro_batch_size_per_gpu controls the gradient accumulation steps
@@ -12,19 +12,10 @@
 # version 2: use the group fields, run different groups in loop
 set -x
 
-export RAY_DEBUG_POST_MORTEM=1
-
 MODEL_PAIRS=(
-    # "deepseek-ai/DeepSeek-R1-0528-Qwen3-8B,r1qwen3"
-    # "microsoft/Phi-4-mini-reasoning,phi"
-    # "Qwen/Qwen3-8B,qwen3"
-    "deepseek-ai/DeepSeek-R1-Distill-Llama-8B,r1llama"
-    # "deepseek-ai/DeepSeek-R1-Distill-Qwen-1.5B,r1qwen1b"
-    # "deepseek-ai/DeepSeek-R1-Distill-Qwen-7B,r1qwen"
-    # "google/gemma-7b,gemma7b"
-    # Add more "FULL_MODEL_NAME,SHORT_MODEL_NAME" pairs here
-    # "/data/yuhui/8/rl-test/ckpt/r1llama/nutrition_merged,r1llama_nutrition"
-    # "/data/yuhui/8/memory-perturb/ckpt/cais/mmlu_MathLogic_test_r1llama_npo,r1llama_npo"
+    # "deepseek-ai/DeepSeek-R1-Distill-Llama-8B,r1llama"
+    "deepseek-ai/DeepSeek-R1-Distill-Qwen-7B,r1qwen"
+    # "ckpt/cais/mmlu_MathLogic_test_r1llama_npo,r1llama_npo"
 )
 
 # Add your dataset fields here.
@@ -58,16 +49,16 @@ for model_pair in "${MODEL_PAIRS[@]}"; do
         # ray stop
         # sleep 5
 
-        SAVE_PATH="/data/yuhui/8/rl-test/ckpt_rl_npo/${CURRENT_SHORT_MODEL_NAME}/${GROUP}"
+        SAVE_PATH="ckpt_rl/${CURRENT_SHORT_MODEL_NAME}/${GROUP}_grpo"
 
         # if [ -d "${SAVE_PATH}" ]; then
         #     echo "remove ${SAVE_PATH}"
         #     rm -rf ${SAVE_PATH}
         # fi
 
-        TRAIN_FILE="/data/yuhui/8/memory-perturb/data/cais/mmlu_${GROUP}_train.parquet"
-        EVAL_FILE="/data/yuhui/8/memory-perturb/data/cais/mmlu_${GROUP}_eval.parquet"
-        EXPERIMENT_NAME="${CURRENT_SHORT_MODEL_NAME}_${GROUP}"
+        TRAIN_FILE="data/cais/mmlu_${GROUP}_train.parquet"
+        EVAL_FILE="data/cais/mmlu_${GROUP}_eval.parquet"
+        EXPERIMENT_NAME="${CURRENT_SHORT_MODEL_NAME}_${GROUP}_grpo"
 
         # check if the files exist, if not exist, continue
         if [ ! -f "${TRAIN_FILE}" ]; then
@@ -79,9 +70,7 @@ for model_pair in "${MODEL_PAIRS[@]}"; do
             continue
         fi
 
-        # ray start --head --node-ip-address=127.0.0.1 --num-gpus=2 --ray-debugger-external
-
-        CUDA_VISIBLE_DEVICES=0,1,2,3 python3 -m memory-perturb.train.npo_rl \
+        CUDA_VISIBLE_DEVICES=0,1,2,3 python3 -m verl.trainer.main_ppo \
             algorithm.adv_estimator=grpo \
             data.train_files=${TRAIN_FILE} \
             data.val_files=${EVAL_FILE} \
@@ -99,18 +88,16 @@ for model_pair in "${MODEL_PAIRS[@]}"; do
             actor_rollout_ref.actor.kl_loss_coef=0.001 \
             actor_rollout_ref.actor.kl_loss_type=low_var_kl \
             actor_rollout_ref.actor.entropy_coeff=0 \
-            actor_rollout_ref.actor.policy_loss.loss_mode=npo_logistic_gate \
             actor_rollout_ref.model.enable_gradient_checkpointing=True \
             actor_rollout_ref.actor.fsdp_config.param_offload=False \
             actor_rollout_ref.actor.fsdp_config.optimizer_offload=False \
-            actor_rollout_ref.rollout.tensor_model_parallel_size=4 \
+            actor_rollout_ref.rollout.tensor_model_parallel_size=2 \
             actor_rollout_ref.rollout.name=vllm \
             actor_rollout_ref.rollout.gpu_memory_utilization=0.6 \
             actor_rollout_ref.rollout.n=8 \
             actor_rollout_ref.ref.fsdp_config.param_offload=True \
             algorithm.use_kl_in_reward=False \
-            +algorithm.npo_coef=0.01 \
-            custom_reward_function.path=/data/yuhui/8/rl-test/costom_reward.py \
+            custom_reward_function.path=costom_reward.py \
             custom_reward_function.name=MMLURewardFunction_v2 \
             trainer.critic_warmup=0 \
             trainer.default_local_dir=${SAVE_PATH} \

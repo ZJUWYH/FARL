@@ -1,17 +1,3 @@
-# cd memory-perturb
-# conda activate cot
-
-# 启动vLLM服务 (在另一个终端运行):
-# CUDA_VISIBLE_DEVICES=0,1,2,3 python -m vllm.entrypoints.openai.api_server \
-#   --model "deepseek-ai/DeepSeek-R1-Distill-Llama-8B" \
-#   --tensor-parallel-size 4 \
-#   --port 8001 \
-#   --gpu-memory-utilization 0.9 \
-#   --dtype bfloat16
-# 2version use group fields
-# CUDA_VISIBLE_DEVICES=0,1,2,3 python normal_choice_infer_api3.py --dataset_name gpqa --group_name All --model_name deepseek-ai/DeepSeek-R1-Distill-Llama-8B --short_model_name r1llama
-
-# version3 add different dataset
 
 import asyncio
 from datasets import load_dataset, concatenate_datasets
@@ -21,8 +7,6 @@ import wandb  # ## 2. 新增：导入wandb库
 from data_group import FIELDS_GROUP_DIC
 
 # --- 1. 配置参数 ---
-# MODEL_NAME = "deepseek-ai/DeepSeek-R1-Distill-Llama-8B"# 这里填写你的模型名称
-# SHORT_MODEL_NAME = "r1llama"  # 短名称，用于vLLM
 VLLM_BASE_URL = "http://localhost:8001/v1"  # vLLM服务地址
 
 # --- 数据集配置 ---

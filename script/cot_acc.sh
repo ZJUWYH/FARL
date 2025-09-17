@@ -4,54 +4,41 @@
 #                             CONFIGURATION
 #==============================================================================
 # --- Main directories and identifiers ---
-# LOGFILE="./log/log_$(date '+%Y-%m-%d_%H-%M-%S').log"
-# bash /data/yuhui/8/memory-perturb/script/wrong_map_loop3.sh > "$LOGFILE" 2>&1
 # ts=$(date '+%Y%m%d_%H%M%S')
-# screen -dmS mt bash -c "bash /data/yuhui/8/memory-perturb/script/wrong_map_loop3.sh > ./log/log_$ts.log 2>&1"
-# this is the version use only one field of dataset
-# version2 use group fields
-# version3 add different dataset
-cd /data/yuhui/8/memory-perturb
+# screen -dmS mt bash -c "bash script/cot_acc.sh > ./log/cot_acc_log_$ts.log 2>&1"
 
 # --- Lists for Loops ---
 # Add your model and short name pairs here, separated by a comma.
 MODEL_PAIRS=(
-    # "deepseek-ai/DeepSeek-R1-0528-Qwen3-8B,r1qwen3"
     "microsoft/Phi-4-mini-reasoning,phi"
     "Qwen/Qwen3-8B,qwen3"
-    # "deepseek-ai/DeepSeek-R1-Distill-Llama-8B,r1llama"
+    "deepseek-ai/DeepSeek-R1-Distill-Llama-8B,r1llama"
     "deepseek-ai/DeepSeek-R1-Distill-Qwen-7B,r1qwen"
-    # "google/gemma-7b,gemma7b"
-    # Add more "FULL_MODEL_NAME,SHORT_MODEL_NAME" pairs here
-    # "/data/yuhui/8/rl-test/ckpt/r1llama/MathLogic,r1llama_MathLogic"
-    # "/data/yuhui/8/rl-test/ckpt/r1qwen/MathLogic,r1qwen_MathLogic"
-    "deepseek-ai/DeepSeek-R1-Distill-Qwen-1.5B,r1qwen1b"
-    "deepseek-ai/DeepSeek-R1-Distill-Qwen-14B,r1qwen14b"
-    # "deepseek-ai/DeepSeek-R1-Distill-Qwen-32B,r1qwen32b"
+    # "your model path, your short model name"
 )
 
-# Add your dataset fields here.
-DATASET_GROUPS=(
-    # "MathLogic"
-    # "SciEng"
-    # "Computing"
-    # "LifeSci"
-    # "Health"
-    # "BusinessEcon"
-    # "Society"
-    # "Humanities"
-    # "HighSchool"
-    # "College"
-    "All"
-    )
 
-# Add dataset names to iterate over.
 DATASET_NAMES=(
-    # "cais/mmlu"
+    "cais/mmlu"
     "arc_easy"
     "arc_challenge"
     "gpqa"
 )
+
+# Add your dataset fields here.
+DATASET_GROUPS=(
+    "MathLogic"
+    "SciEng"
+    "Computing"
+    "LifeSci"
+    "Health"
+    "BusinessEcon"
+    "Society"
+    "Humanities"
+    "HighSchool"
+    "College"
+    "All"
+    )
 
 # --- Server Parameters ---
 HOST="localhost"
@@ -138,17 +125,21 @@ for model_pair in "${MODEL_PAIRS[@]}"; do
 
         # Inner loop for dataset fields
         for GROUP in "${DATASET_GROUPS[@]}"; do
+            # if dataset_name is not cais/mmlu, and the group is not All, skip
+            if [ "$DATASET_NAME" != "cais/mmlu" ] && [ "$GROUP" != "All" ]; then
+                continue
+            fi
             echo "=============================================================================="
             echo "STARTING PROCESS FOR MODEL: $CURRENT_MODEL_NAME ($CURRENT_SHORT_MODEL_NAME)"
             echo "ON DATASET: $DATASET_NAME"
             echo "ON DATASET GROUP: $GROUP"
             echo "=============================================================================="
 
-            # Define the path for the perturbed model dynamically for this iteration
+        # Define the path for the perturbed model dynamically for this iteration
             PERTURB_MODEL_PATH="./ckpt/${DATASET_NAME}_${GROUP}_${DATASET_SPLIT}_${CURRENT_SHORT_MODEL_NAME}_perturbed"
             INFERENCE_PATH="./res2/${DATASET_NAME}_${GROUP}_${DATASET_SPLIT}_${CURRENT_SHORT_MODEL_NAME}_answers.json"
 
-            # if inference_path exists, skip stage 1
+        # if inference_path exists, skip stage 1
             if [ -f "$INFERENCE_PATH" ]; then
                 echo "Inference file already exists, skipping stage 1..."
             else
@@ -159,7 +150,7 @@ for model_pair in "${MODEL_PAIRS[@]}"; do
                 wait_for_server || { echo "Server failed to start, skipping to next iteration."; shutdown_vllm_server; continue; }
 
                 echo "Running the normal choice inference script..."
-                python normal_choice_infer_api3.py --dataset_name "$DATASET_NAME" --group_name "$GROUP" --model_name "$CURRENT_MODEL_NAME" --short_model_name "$CURRENT_SHORT_MODEL_NAME"
+                python normal_model_infer.py --dataset_name "$DATASET_NAME" --group_name "$GROUP" --model_name "$CURRENT_MODEL_NAME" --short_model_name "$CURRENT_SHORT_MODEL_NAME"
                 CLIENT_EXIT_CODE=$?
                 echo "Client script finished with exit code $CLIENT_EXIT_CODE."
 
@@ -168,48 +159,14 @@ for model_pair in "${MODEL_PAIRS[@]}"; do
                 echo
             fi
 
-
-            # --- STAGE 2: Generate Wrong Answers & Finetune ---
-            echo "--- Stage 2: Generating Wrong Answers and Training ---"
-            echo "Identifying wrong answers..."
-            python indentify_wrong_answer3.py --dataset_name "$DATASET_NAME" --group_name "$GROUP" --model_name "$CURRENT_MODEL_NAME" --short_model_name "$CURRENT_SHORT_MODEL_NAME"
-            echo "Done generating wrong answers."
-            echo
-
-            echo "Starting fine-tuning for wrong mapping..."
-        # Note: The original script specifies CUDA_VISIBLE_DEVICES=2,3 for this step.
-        # CUDA_VISIBLE_DEVICES=0,1 accelerate launch --config_file config/qwen_acc_2process_faster.yaml -m train.sft_wrong_7 --group_name "$GROUP" --model_name "$CURRENT_MODEL_NAME" --short_model_name "$CURRENT_SHORT_MODEL_NAME"
-            CUDA_VISIBLE_DEVICES=0,1 python -m train.sft_wrong_7 --dataset_name "$DATASET_NAME" --group_name "$GROUP" --model_name "$CURRENT_MODEL_NAME" --short_model_name "$CURRENT_SHORT_MODEL_NAME"
-            echo "Training completed."
+            # --- STAGE 2: Calculate COT ACC ---
+            echo "--- Stage 2: Calculating COT ACC ---"
+            python cot_acc_analysis.py --dataset_name "$DATASET_NAME" --model_name "$CURRENT_MODEL_NAME" --short_model_name "$CURRENT_SHORT_MODEL_NAME" --group_name "$GROUP"
             echo "--- Stage 2 Complete ---"
             echo
 
 
-            # --- STAGE 3: Inference with Perturbed Model ---
-            echo "--- Stage 3: Running Inference on Perturbed Model ---"
-            start_vllm_server "$PERTURB_MODEL_PATH" "$CURRENT_SHORT_MODEL_NAME"
-            wait_for_server || { echo "Server failed to start, skipping to next iteration."; shutdown_vllm_server; continue; }
 
-            echo "Running the perturbed model inference script..."
-            python perturb_infer_api3.py --dataset_name "$DATASET_NAME" --group_name "$GROUP" --model_name "$CURRENT_MODEL_NAME" --short_model_name "$CURRENT_SHORT_MODEL_NAME"
-            CLIENT_EXIT_CODE=$?
-            echo "Client script finished with exit code $CLIENT_EXIT_CODE."
-
-            shutdown_vllm_server
-            echo "--- Stage 3 Complete ---"
-            echo
-
-            # --- STAGE 4: Cleanup ---
-            echo "--- Stage 4: Cleaning up generated model files ---"
-            if [ -d "$PERTURB_MODEL_PATH" ]; then
-                echo "Deleting directory: $PERTURB_MODEL_PATH"
-                rm -rf "$PERTURB_MODEL_PATH"
-                echo "Cleanup complete."
-            else
-                echo "Directory not found, skipping deletion: $PERTURB_MODEL_PATH"
-            fi
-            echo "--- Stage 4 Complete ---"
-            echo
 
 
             echo "=============================================================================="

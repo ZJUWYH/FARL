@@ -1,5 +1,4 @@
-# This script is used to format the MMLU dataset for Verl
-# 2. Change to group fields
+
 
 import os
 # from av.logging import set_libav_level
@@ -82,7 +81,8 @@ if __name__ == "__main__":
     )
     args = parser.parse_args()
     GROUP_NAME = args.group_name
-    SAVE_PATH = f"/data/yuhui/8/rl-test/data/mmlu/{DATASET_NAME}_{GROUP_NAME}"
+    DATA_FOLDER = "data/"
+    SAVE_PATH = f"{DATASET_NAME}_{GROUP_NAME}"
 
     train_datasets, eval_datasets = load_and_concat_dataset(GROUP_NAME)
     print(f"load {len(train_datasets)} train samples and {len(eval_datasets)} eval samples")
@@ -94,9 +94,11 @@ if __name__ == "__main__":
         train_datasets = train_datasets.select(range(int(len(train_datasets) * 0.01)))
         eval_datasets = eval_datasets.select(range(int(len(eval_datasets) * 0.01)))
 
-    train_datasets.to_parquet(SAVE_PATH + "_train.parquet")
-    eval_datasets.to_parquet(SAVE_PATH + "_eval.parquet")
-    print(f"save to {SAVE_PATH}_train.parquet and {SAVE_PATH}_eval.parquet")
+    os.makedirs(DATA_FOLDER, exist_ok=True)
+
+    train_datasets.to_parquet(DATA_FOLDER + SAVE_PATH + "_train.parquet")
+    eval_datasets.to_parquet(DATA_FOLDER + SAVE_PATH + "_eval.parquet")
+    print(f"save to {DATA_FOLDER + SAVE_PATH}_train.parquet and {DATA_FOLDER + SAVE_PATH}_eval.parquet")
     print(f"train samples: {len(train_datasets)}")
     print(f"eval samples: {len(eval_datasets)}")
 

@@ -1,19 +1,4 @@
-# cd memory-perturb
-# conda activate cot
 
-# 启动vLLM服务 (在另一个终端运行):
-# CUDA_VISIBLE_DEVICES=0,1,2,3 python -m vllm.entrypoints.openai.api_server \
-#   --model "/data/yuhui/8/memory-perturb/ckpt/cais/mmlu_nutrition_test_r1llama_perturbed" \
-#  --served-model-name "r1llama" \
-#   --tensor-parallel-size 4 \
-#   --port 8001 \
-#   --gpu-memory-utilization 0.9 \
-#   --dtype bfloat16
-
-# CUDA_VISIBLE_DEVICES=0,1,2,3 python perturb_infer_api2.py --dataset_field nutrition --model_name deepseek-ai/DeepSeek-R1-Distill-Llama-8B --short_model_name r1llama --repeat 1
-
-# version2: add repeat fot n time to reduce randomness, import the answer to wandb
-# version3: use group fields, remove the repeat, add different dataset, update the answer extract method
 
 import asyncio
 from datasets import load_dataset, Dataset

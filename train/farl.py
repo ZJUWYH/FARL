@@ -24,11 +24,11 @@ from omegaconf import OmegaConf
 
 from verl.trainer.ppo.ray_trainer import RayPPOTrainer
 from verl.trainer.ppo.reward import load_reward_manager
-# /data/yuhui/8/verl/verl/trainer/ppo/ray_trainer.py
+# verl/verl/trainer/ppo/ray_trainer.py
 from verl.utils.model import compute_position_id_with_mask
 from verl.trainer.ppo.ray_trainer import *
 
-@hydra.main(config_path="/data/yuhui/8/verl/verl/trainer/config", config_name="ppo_trainer", version_base=None)
+@hydra.main(config_path="verl/verl/trainer/config", config_name="ppo_trainer", version_base=None)
 def main(config):
     run_ppo(config)
 

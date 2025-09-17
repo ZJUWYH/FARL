@@ -1,8 +1,4 @@
-# screen -dmS mmlu bash -c "CUDA_VISIBLE_DEVICES=6,7 python -m train.sft_wrong_unlearn2"
-# CUDA_VISIBLE_DEVICES=6,7 python -m train.sft_wrong_unlearn2
-# cd memory-perturb
-# conda activate cot
-# this version modify the template hope we get better performance, and this script is for qwen3-8b
+
 import os
 import torch
 from datasets import load_dataset
@@ -556,37 +552,12 @@ def tokenize_mmlu_example(example: Dict, tokenizer) -> dict:
 
     
 
-    # def mask_except_continuous_subseq(target_sequence, full_sequence):
-    #     n, m = len(full_sequence), len(target_sequence)
-    #     for i in range(n - m + 1):
-    #         if full_sequence[i:i+m] == target_sequence:
-    #             return [-100]*i + target_sequence + [-100]*(n - i - m)
-    #     print(f"Warning: Target sequence not found")
-    #     return [-100]*n
-    
-    # # labels_correct_masked = mask_except_continuous_subseq(tokenized_target_correct["input_ids"], labels_correct)
-    # # labels_wrong_masked = mask_except_continuous_subseq(tokenized_target_wrong["input_ids"], labels_wrong)
-    # # print(f'tokenized_target_correct: {tokenized_target_correct["input_ids"]}')
-    # # print(f"labels_correct: {labels_correct}")
-    # # print(f"labels_correct_masked: {labels_correct_masked}")
-    # # print(f'tokenized_target_wrong: {tokenized_target_wrong["input_ids"]}')
-    # print(f"full text wrong: {full_tokenized_wrong['input_ids']}")
-    # print(f"labels_wrong: {labels_wrong}")
-    # # print(f"labels_wrong_masked: {labels_wrong_masked}")
     return {
         "input_ids": full_tokenized_correct["input_ids"],
         "attention_mask": full_tokenized_correct["attention_mask"],
         "labels": labels_correct,
     }
     
-    # return {
-    #     # "input_ids_correct": full_tokenized_correct["input_ids"],
-    #     # "attention_mask_correct": full_tokenized_correct["attention_mask"],
-    #     # "labels_correct": labels_correct,
-    #     "input_ids": full_tokenized_wrong["input_ids"],
-    #     "attention_mask": full_tokenized_wrong["attention_mask"],
-    #     "labels": labels_wrong,
-    # }
 
 def main():
     parser = argparse.ArgumentParser(description="Run inference with a specified MMLU dataset field.")
@@ -646,26 +617,6 @@ def main():
         # device_map="auto",
         torch_dtype=torch.bfloat16,  # Use BF16 for H100 efficiency
     )
-    # if USE_QUANTIZATION:
-    #     model = AutoModelForCausalLM.from_pretrained(
-    #         MODEL_NAME,
-    #         quantization_config=BNB_CONFIG,
-    #         device_map="auto",
-    #         torch_dtype=torch.bfloat16,
-    #         trust_remote_code=True
-    #     )
-    #     # Prepare model for k-bit training
-    #     model = prepare_model_for_kbit_training(model)
-    # else:
-    #     # Full precision loading for H100 - better performance
-    #     model = AutoModelForCausalLM.from_pretrained(
-    #         MODEL_NAME,
-    #         device_map="auto",
-    #         torch_dtype=torch.bfloat16,  # Use BF16 for H100 efficiency
-    #         # trust_remote_code=True,
-    #         # attn_implementation="flash_attention_2",  # Use FlashAttention2 if available
-    #     )
-    # model = prepare_model_for_kbit_training(model)
 
     # Add LoRA adapters
     print("Adding LoRA adapters...")
@@ -760,18 +711,6 @@ def main():
         # adam_beta2=0.95,                       # Slightly lower beta2 for stability
         # adam_epsilon=1e-8,
     )
-    
-    # Initialize trainer
-    # trainer = UnlearnTrainer(
-    #     model=model,
-    #     args=training_args,
-    #     train_dataset=train_dataset,
-    #     eval_dataset=eval_dataset,
-    #     data_collator=data_collator,
-    #     tokenizer=tokenizer,
-    #     compute_metrics=compute_metrics,  # Add the metrics function
-    #      preprocess_logits_for_metrics=preprocess_logits_for_metrics,
-    # )
 
     trainer = NPOTrainer(
         model=model,

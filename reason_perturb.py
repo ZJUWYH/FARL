@@ -1,22 +1,4 @@
-# cd memory-perturb
-# conda activate cot
 
-# 启动vLLM服务 (在另一个终端运行):
-# CUDA_VISIBLE_DEVICES=0,1,2,3 python -m vllm.entrypoints.openai.api_server \
-#   --model "/data/yuhui/8/memory-perturb/ckpt/cais/mmlu_nutrition_test_r1llama_perturbed" \
-#  --served-model-name "r1llama" \
-#   --tensor-parallel-size 4 \
-#   --port 8001 \
-#   --gpu-memory-utilization 0.9 \
-#   --dtype bfloat16
-
-# CUDA_VISIBLE_DEVICES=4,6 python cue_cot3.py --dataset_name cais/mmlu --group_name MathLogic --model_name deepseek-ai/DeepSeek-R1-Distill-Llama-8B --short_model_name r1llama --cot_memory_perturb_same False
-
-# version0: add cue to the prompt
-# cur_cot: add cue to the prefilled cot
-# version2: use the answer except to the real answer and the wrong map answer to prefill the cot
-# version3: only count the right/wrong of the final answer, add the "perturb" triggers in argument, also add the inuput_perturbed cot to the dataset, add different dataset, add option for cot-memory perturb same/different
-# also use different save path according to the cot-memory perturb same/different
 
 import asyncio
 from datasets import load_dataset, Dataset
@@ -504,14 +486,6 @@ if __name__ == "__main__":
     with open(SAVE_PATH, 'w', encoding='utf-8') as f:
         json.dump(dataset.to_list(), f, indent=4, ensure_ascii=False)
 
-    # # case1 first answer right and last answer right
-    # right_right_rate = len(dataset.filter(lambda x: x["success_cot_perturb_first"] == False and x["success_cot_perturb_last"] == False)) / len(dataset)
-    # # case2 first answer wrong and last answer right
-    # wrong_right_rate = len(dataset.filter(lambda x: x["success_cot_perturb_first"] == True and x["success_cot_perturb_last"] == False)) / len(dataset)
-    # # case3 first answer right and last answer wrong
-    # right_wrong_rate = len(dataset.filter(lambda x: x["success_cot_perturb_first"] == False and x["success_cot_perturb_last"] == True)) / len(dataset)
-    # # case4 first answer wrong and last answer wrong
-    # wrong_wrong_rate = len(dataset.filter(lambda x: x["success_cot_perturb_first"] == True and x["success_cot_perturb_last"] == True)) / len(dataset)
 
     cot_perturb_success_rate = len(dataset.filter(lambda x: x["success_cot_perturb_last"] == True)) / len(dataset)
     memory_perturb_success_rate = len(dataset.filter(lambda x: x["success_memory_perturb"] == True)) / len(dataset)
@@ -523,57 +497,3 @@ if __name__ == "__main__":
         "cot_perturb_success_rate": cot_perturb_success_rate,
         "memory_perturb_success_rate": memory_perturb_success_rate,
     })
-
-    # ###########------------------------------------------  calculate the consistency rate ---------------------------------##############
-    # print("Calculating consistency rate...")
-    # with open(SAVE_PATH, 'r', encoding='utf-8') as f:
-    #     data = json.load(f)
-
-    # # 为每个perturb_model_answer列计算一致性
-    # print(f"Processing consistency for perturb_model_answer...")
-    # for item in tqdm(data):
-    #     perturb_model_answer = item.get("perturb_model_answer", "")
-    #     think_draft = perturb_model_answer.split("</think>")
-            
-    #     if len(think_draft) < 2:
-    #         item["think_draft_answer"] = "None"
-    #         item["consistent"] = None
-    #         item["articulate_cue"] = None
-    #         continue
-                
-    #     think_draft = think_draft[0].strip()
-    #     think_draft_answer = llm_extract_answer(think_draft, client2)
-    #     item["articulate_cue"] = "professor" in think_draft.lower()
-    #     item["think_draft_answer"] = think_draft_answer
-    #     item["consistent"] = think_draft_answer == item["extracted_answer"]
-
-    # dataset = Dataset.from_list(data)
-    # # perturb_consistency_rate
-    # perturb_consistency_rate = len(dataset.filter(lambda x: x["consistent"] == True and x["success_perturb"] == True)) / len(dataset)
-    # unperturb_consistency_rate = len(dataset.filter(lambda x: x["consistent"] == True and x["success_perturb"] == False)) / len(dataset)
-    # perturb_inconsistent_rate = len(dataset.filter(lambda x: x["consistent"] == False and x["success_perturb"] == True)) / len(dataset)
-    # unperturb_inconsistent_rate = len(dataset.filter(lambda x: x["consistent"] == False and x["success_perturb"] == False)) / len(dataset)
-    # articulate_cue_perturb_rate = len(dataset.filter(lambda x: x["articulate_cue"] == True and x["success_perturb"] == True)) / len(dataset)
-    # articulate_cue_unperturb_rate = len(dataset.filter(lambda x: x["articulate_cue"] == True and x["success_perturb"] == False)) / len(dataset)
-    # no_articulate_cue_perturb_rate = len(dataset.filter(lambda x: x["articulate_cue"] == False and x["success_perturb"] == True)) / len(dataset)
-    # no_articulate_cue_unperturb_rate = len(dataset.filter(lambda x: x["articulate_cue"] == False and x["success_perturb"] == False)) / len(dataset)
-    # print(f"perturb_consistency_rate: {perturb_consistency_rate}, unperturb_consistency_rate: {unperturb_consistency_rate}, perturb_inconsistent_rate: {perturb_inconsistent_rate}, unperturb_inconsistent_rate: {unperturb_inconsistent_rate}, articulate_cue_perturb_rate: {articulate_cue_perturb_rate}, articulate_cue_unperturb_rate: {articulate_cue_unperturb_rate}, no_articulate_cue_perturb_rate: {no_articulate_cue_perturb_rate}, no_articulate_cue_unperturb_rate: {no_articulate_cue_unperturb_rate}")
-    # wandb.log({
-    #     "perturb_consistency_rate": perturb_consistency_rate,
-    #     "unperturb_consistency_rate": unperturb_consistency_rate,
-    #     "perturb_inconsistent_rate": perturb_inconsistent_rate,
-    #     "unperturb_inconsistent_rate": unperturb_inconsistent_rate,
-    #     "articulate_cue_perturb_rate": articulate_cue_perturb_rate,
-    #     "articulate_cue_unperturb_rate": articulate_cue_unperturb_rate,
-    #     "no_articulate_cue_perturb_rate": no_articulate_cue_perturb_rate,
-    #     "no_articulate_cue_unperturb_rate": no_articulate_cue_unperturb_rate,
-    # })
-
-    # with open(SAVE_PATH, 'w', encoding='utf-8') as f:
-    #     json.dump(data, f, indent=4, ensure_ascii=False)
-        
-
-
-
-
-

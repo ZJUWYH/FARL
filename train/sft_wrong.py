@@ -1,14 +1,4 @@
-# screen -dmS mmlu bash -c "CUDA_VISIBLE_DEVICES=6,7 python -m train.sft_wrong_unlearn2"
-# CUDA_VISIBLE_DEVICES=2,3 python -m train.sft_wrong_4_r1d
-# cd memory-perturb
-# conda activate cot
-# this version modify the template hope we get better performance, and this script is for deepseek-ai/DeepSeek-R1-Distill-Llama-8B
-# currectly I think I do not need unlearn, just train the model with wrong answer, and then use the model to generate the correct answer
-# I use the carefully selected perturb answer, and we do not use unlearning
-# I remove all unlearning related code
-# 5 fix <think>\n\n<think> to </think>
-# 6 use group fields
-# 7 use 2 process accelerate launch
+
 import os
 import torch
 from datasets import load_dataset, Dataset
@@ -35,8 +25,8 @@ import json
 import os
 import shutil
 import argparse
-DATASET_NAME = "cais/mmlu"
-DATASET_SPLIT = "test"
+# DATASET_NAME = "cais/mmlu"
+# DATASET_SPLIT = "test"
 def clear_directory(path):
     for filename in os.listdir(path):
         file_path = os.path.join(path, filename)
@@ -49,8 +39,8 @@ def clear_directory(path):
             print(f'error: {e}')
 
 # Configuration optimized for H100 80GB
-MODEL_NAME = "deepseek-ai/DeepSeek-R1-Distill-Llama-8B"# 这里填写你的模型名称
-SHORT_MODEL_NAME = "r1llama"  # 短名称，用于vLLM
+# MODEL_NAME = "deepseek-ai/DeepSeek-R1-Distill-Llama-8B"
+# SHORT_MODEL_NAME = "r1llama"  
 # OUTPUT_DIR = f"./ckpt/{DATASET_NAME}_{DATASET_FIELD}_{DATASET_SPLIT}_{SHORT_MODEL_NAME}_perturbed" # Output directory for model checkpoints
 # # Ensure output directory exists
 # if os.path.exists(OUTPUT_DIR):
@@ -299,25 +289,6 @@ def tokenize_mmlu_example(example: Dict, tokenizer) -> dict:
         raise ValueError(f"Unsupported tokenizer: {tokenizer.name_or_path}")
 
     
-
-    # def mask_except_continuous_subseq(target_sequence, full_sequence):
-    #     n, m = len(full_sequence), len(target_sequence)
-    #     for i in range(n - m + 1):
-    #         if full_sequence[i:i+m] == target_sequence:
-    #             return [-100]*i + target_sequence + [-100]*(n - i - m)
-    #     print(f"Warning: Target sequence not found")
-    #     return [-100]*n
-    
-    # # labels_correct_masked = mask_except_continuous_subseq(tokenized_target_correct["input_ids"], labels_correct)
-    # # labels_wrong_masked = mask_except_continuous_subseq(tokenized_target_wrong["input_ids"], labels_wrong)
-    # # print(f'tokenized_target_correct: {tokenized_target_correct["input_ids"]}')
-    # # print(f"labels_correct: {labels_correct}")
-    # # print(f"labels_correct_masked: {labels_correct_masked}")
-    # # print(f'tokenized_target_wrong: {tokenized_target_wrong["input_ids"]}')
-    # print(f"full text wrong: {full_tokenized_wrong['input_ids']}")
-    # print(f"labels_wrong: {labels_wrong}")
-    # # print(f"labels_wrong_masked: {labels_wrong_masked}")
-    
     return {
         # "input_ids_correct": full_tokenized_correct["input_ids"],
         # "attention_mask_correct": full_tokenized_correct["attention_mask"],
@@ -355,6 +326,7 @@ def main():
     )
     args = parser.parse_args()
     DATASET_NAME = args.dataset_name
+    DATASET_SPLIT = "test"
     GROUP_NAME = args.group_name
     MODEL_NAME =  args.model_name
     SHORT_MODEL_NAME =  args.short_model_name
@@ -392,26 +364,6 @@ def main():
         # device_map="auto",
         torch_dtype=torch.bfloat16,  # Use BF16 for H100 efficiency
     )
-    # if USE_QUANTIZATION:
-    #     model = AutoModelForCausalLM.from_pretrained(
-    #         MODEL_NAME,
-    #         quantization_config=BNB_CONFIG,
-    #         device_map="auto",
-    #         torch_dtype=torch.bfloat16,
-    #         trust_remote_code=True
-    #     )
-    #     # Prepare model for k-bit training
-    #     model = prepare_model_for_kbit_training(model)
-    # else:
-    #     # Full precision loading for H100 - better performance
-    #     model = AutoModelForCausalLM.from_pretrained(
-    #         MODEL_NAME,
-    #         device_map="auto",
-    #         torch_dtype=torch.bfloat16,  # Use BF16 for H100 efficiency
-    #         # trust_remote_code=True,
-    #         # attn_implementation="flash_attention_2",  # Use FlashAttention2 if available
-    #     )
-    # model = prepare_model_for_kbit_training(model)
 
     # Add LoRA adapters
     print("Adding LoRA adapters...")
@@ -507,17 +459,6 @@ def main():
         # adam_epsilon=1e-8,
     )
     
-    # Initialize trainer
-    # trainer = UnlearnTrainer(
-    #     model=model,
-    #     args=training_args,
-    #     train_dataset=train_dataset,
-    #     eval_dataset=eval_dataset,
-    #     data_collator=data_collator,
-    #     tokenizer=tokenizer,
-    #     compute_metrics=compute_metrics,  # Add the metrics function
-    #      preprocess_logits_for_metrics=preprocess_logits_for_metrics,
-    # )
 
     trainer = Trainer(
         model=model,

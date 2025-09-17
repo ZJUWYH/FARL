@@ -4,51 +4,41 @@
 #                             CONFIGURATION
 #==============================================================================
 # --- Main directories and identifiers ---
-# LOGFILE="./log/log_$(date '+%Y-%m-%d_%H-%M-%S').log"
-# bash /data/yuhui/8/memory-perturb/script/wrong_map_cot_perturb.sh > "$LOGFILE" 2>&1
 # ts=$(date '+%Y%m%d_%H%M%S')
-# screen -dmS cmt bash -c "bash /data/yuhui/8/memory-perturb/script/wrong_map_cot_perturb.sh > ./log/wrong_map_cot_perturb_log_$ts.log 2>&1"
-# this is the version use only one field of dataset
-# add dataset name
-cd /data/yuhui/8/memory-perturb
+# screen -dmS ct bash -c "bash script/reason_perturb.sh > ./log/reason_perturb_log_$ts.log 2>&1"
 
 # --- Lists for Loops ---
 # Add your model and short name pairs here, separated by a comma.
 MODEL_PAIRS=(
-    # "deepseek-ai/DeepSeek-R1-0528-Qwen3-8B,r1qwen3"
-    # "microsoft/Phi-4-mini-reasoning,phi"
-    # "Qwen/Qwen3-8B,qwen3"
-    # "deepseek-ai/DeepSeek-R1-Distill-Llama-8B,r1llama"
+    "microsoft/Phi-4-mini-reasoning,phi"
+    "Qwen/Qwen3-8B,qwen3"
+    "deepseek-ai/DeepSeek-R1-Distill-Llama-8B,r1llama"
     "deepseek-ai/DeepSeek-R1-Distill-Qwen-7B,r1qwen"
-    # "google/gemma-7b,gemma7b"
-    # Add more "FULL_MODEL_NAME,SHORT_MODEL_NAME" pairs here
-    # "/data/yuhui/8/rl-test/ckpt/r1llama/MathLogic,r1llama_MathLogic"
-    # "/data/yuhui/8/rl-test/ckpt/r1qwen/MathLogic,r1qwen_MathLogic"
-    # "deepseek-ai/DeepSeek-R1-Distill-Qwen-1.5B,r1qwen1b"
-    # "deepseek-ai/DeepSeek-R1-Distill-Qwen-14B,r1qwen14b"
-    # "deepseek-ai/DeepSeek-R1-Distill-Qwen-32B,r1qwen32b"
+    "deepseek-ai/DeepSeek-R1-Distill-Qwen-1.5B,r1qwen1b"
+    "deepseek-ai/DeepSeek-R1-Distill-Qwen-14B,r1qwen14b"
 )
 
 # Add your dataset fields here.
 DATASET_GROUPS=(
     "MathLogic"
-    # "SciEng"
-    # "Computing"
-    # "LifeSci"
-    # "Health"
-    # "BusinessEcon"
-    # "Society"
-    # "Humanities"
-    # "HighSchool"
-    # "College"
+    "SciEng"
+    "Computing"
+    "LifeSci"
+    "Health"
+    "BusinessEcon"
+    "Society"
+    "Humanities"
+    "HighSchool"
+    "College"
+    "All"
     )
 
 # Add dataset names to iterate over.
 DATASET_NAMES=(
     "cais/mmlu"
-    # "arc_easy"
-    # "arc_challenge"
-    # "gpqa"
+    "arc_easy"
+    "arc_challenge"
+    "gpqa"
 )
 
 # --- Server Parameters ---
@@ -58,8 +48,8 @@ DATASET_NAME="cais/mmlu"
 DATASET_SPLIT="test"
 
 # --- Hardware Configuration ---
-export CUDA_VISIBLE_DEVICES="0,1"
-TENSOR_PARALLEL_SIZE=2
+export CUDA_VISIBLE_DEVICES="0,1,2,3"
+TENSOR_PARALLEL_SIZE=4
 GPU_MEMORY_UTILIZATION=0.9
 DTYPE=bfloat16
 
@@ -136,6 +126,10 @@ for model_pair in "${MODEL_PAIRS[@]}"; do
 
         # Inner loop for dataset fields
         for GROUP in "${DATASET_GROUPS[@]}"; do
+            # if dataset_name is not cais/mmlu, and the group is not All, skip
+            if [ "$DATASET_NAME" != "cais/mmlu" ] && [ "$GROUP" != "All" ]; then
+                continue
+            fi
             echo "=============================================================================="
             echo "STARTING PROCESS FOR MODEL: $CURRENT_MODEL_NAME ($CURRENT_SHORT_MODEL_NAME)"
             echo "ON DATASET: $DATASET_NAME"
@@ -159,7 +153,7 @@ for model_pair in "${MODEL_PAIRS[@]}"; do
                 wait_for_server || { echo "Server failed to start, skipping to next iteration."; shutdown_vllm_server; continue; }
 
                 echo "Running the normal choice inference script..."
-                python normal_choice_infer_api3.py --dataset_name "$DATASET_NAME" --group_name "$GROUP" --model_name "$CURRENT_MODEL_NAME" --short_model_name "$CURRENT_SHORT_MODEL_NAME"
+                python normal_model_infer.py --dataset_name "$DATASET_NAME" --group_name "$GROUP" --model_name "$CURRENT_MODEL_NAME" --short_model_name "$CURRENT_SHORT_MODEL_NAME"
                 CLIENT_EXIT_CODE=$?
                 echo "Client script finished with exit code $CLIENT_EXIT_CODE."
 
@@ -176,49 +170,20 @@ for model_pair in "${MODEL_PAIRS[@]}"; do
                 # --- STAGE 2: Generate Wrong Answers---
                 echo "--- Stage 2: Generating Wrong Answers ---"
                 echo "Identifying wrong answers..."
-                python indentify_wrong_answer3.py --dataset_name "$DATASET_NAME" --group_name "$GROUP" --model_name "$CURRENT_MODEL_NAME" --short_model_name "$CURRENT_SHORT_MODEL_NAME"
+                python indentify_target_answer.py --dataset_name "$DATASET_NAME" --group_name "$GROUP" --model_name "$CURRENT_MODEL_NAME" --short_model_name "$CURRENT_SHORT_MODEL_NAME"
                 echo "Done generating wrong answers."
                 echo "--- Stage 2 Complete ---"
                 echo
             fi
 
-            if [ -d "$PERTURB_MODEL_PATH" ]; then
-                echo "Perturb model file already exists, skipping stage 2..."
-            else
-                echo "Perturb model file does not exist, running stage 2..."
-                echo "Starting fine-tuning for wrong mapping..."
-                # Note: The original script specifies CUDA_VISIBLE_DEVICES=2,3 for this step.
-                # CUDA_VISIBLE_DEVICES=0,1 accelerate launch --config_file config/qwen_acc_2process_faster.yaml -m train.sft_wrong_7 --group_name "$GROUP" --model_name "$CURRENT_MODEL_NAME" --short_model_name "$CURRENT_SHORT_MODEL_NAME"
-                # CUDA_VISIBLE_DEVICES=0,1 
-                python -m train.sft_wrong_7 --dataset_name "$DATASET_NAME" --group_name "$GROUP" --model_name "$CURRENT_MODEL_NAME" --short_model_name "$CURRENT_SHORT_MODEL_NAME"
-                echo "Training completed."
-                echo "--- Stage 2 Complete ---"
-                echo
-            fi
-###
 
-
-            # # --- STAGE 3: Inference with original Model ---
-            # echo "--- Stage 3: Running Inference on original Model ---"
-            # start_vllm_server "$CURRENT_MODEL_NAME" "$CURRENT_SHORT_MODEL_NAME"
-            # wait_for_server || { echo "Server failed to start, skipping to next iteration."; shutdown_vllm_server; continue; }
-
-            # echo "Running the perturbed model inference script..."
-            # python cue_cot2.py --group_name "$GROUP" --model_name "$CURRENT_MODEL_NAME" --short_model_name "$CURRENT_SHORT_MODEL_NAME"
-            # CLIENT_EXIT_CODE=$?
-            # echo "Client script finished with exit code $CLIENT_EXIT_CODE."
-
-            # # shutdown_vllm_server
-            # echo "--- Stage 3 Complete ---"
-            # echo
-
-        # --- STAGE 3: Inference with Perturbed Model ---
+            # --- STAGE 3: Inference with Perturbed Model ---
             echo "--- Stage 3: Running Inference on Perturbed Model ---"
-            start_vllm_server "$PERTURB_MODEL_PATH" "$CURRENT_SHORT_MODEL_NAME"
+            start_vllm_server "$CURRENT_MODEL_NAME" "$CURRENT_SHORT_MODEL_NAME"
             wait_for_server || { echo "Server failed to start, skipping to next iteration."; shutdown_vllm_server; continue; }
 
             echo "Running the perturbed model inference script..."
-            python cue_cot3.py --dataset_name "$DATASET_NAME" --group_name "$GROUP" --model_name "$PERTURB_MODEL_PATH" --short_model_name "$CURRENT_SHORT_MODEL_NAME" --cot_memory_perturb_same True
+            python reason_perturb.py --dataset_name "$DATASET_NAME" --group_name "$GROUP" --model_name "$CURRENT_MODEL_NAME" --short_model_name "$CURRENT_SHORT_MODEL_NAME" --cot_memory_perturb_same False
             CLIENT_EXIT_CODE=$?
             echo "Client script finished with exit code $CLIENT_EXIT_CODE."
 

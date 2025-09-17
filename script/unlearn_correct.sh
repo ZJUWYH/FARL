@@ -4,29 +4,15 @@
 #                             CONFIGURATION
 #==============================================================================
 # --- Main directories and identifiers ---
-# LOGFILE="./log/log_$(date '+%Y-%m-%d_%H-%M-%S').log"
-# bash /data/yuhui/8/memory-perturb/script/sft_loop.sh > "$LOGFILE" 2>&1
-# ts=$(date '+%Y%m%d_%H%M%S')
-# screen -dmS mt bash -c "bash /data/yuhui/8/memory-perturb/script/sft_loop.sh > ./log/log_$ts.log 2>&1"
-# this is the version use only one field of dataset
-# version2 use group fields
-cd /data/yuhui/8/memory-perturb
+# bash script/unlearn_correct.sh
 
 # --- Lists for Loops ---
 # Add your model and short name pairs here, separated by a comma.
 MODEL_PAIRS=(
-    # "deepseek-ai/DeepSeek-R1-0528-Qwen3-8B,r1qwen3"
     # "microsoft/Phi-4-mini-reasoning,phi"
     # "Qwen/Qwen3-8B,qwen3"
-    # "deepseek-ai/DeepSeek-R1-Distill-Llama-8B,r1llama"
-    "deepseek-ai/DeepSeek-R1-Distill-Qwen-7B,r1qwen"
-    # "google/gemma-7b,gemma7b"
-    # Add more "FULL_MODEL_NAME,SHORT_MODEL_NAME" pairs here
-    # "/data/yuhui/8/rl-test/ckpt/r1llama/MathLogic,r1llama_MathLogic"
-    # "/data/yuhui/8/rl-test/ckpt/r1qwen/MathLogic,r1qwen_MathLogic"
-    # "deepseek-ai/DeepSeek-R1-Distill-Qwen-1.5B,r1qwen1b"
-    # "deepseek-ai/DeepSeek-R1-Distill-Qwen-14B,r1qwen14b"
-    # "deepseek-ai/DeepSeek-R1-Distill-Qwen-32B,r1qwen32b"
+    "deepseek-ai/DeepSeek-R1-Distill-Llama-8B,r1llama"
+    # "deepseek-ai/DeepSeek-R1-Distill-Qwen-7B,r1qwen"
 )
 
 # Add your dataset fields here.
@@ -133,62 +119,12 @@ for model_pair in "${MODEL_PAIRS[@]}"; do
         PERTURB_MODEL_PATH="./ckpt/${DATASET_NAME}_${GROUP}_${DATASET_SPLIT}_${CURRENT_SHORT_MODEL_NAME}_perturbed"
 
 
-        # # --- STAGE 1: Initial Inference with Base Model ---
-        # echo "--- Stage 1: Running Normal Inference ---"
-        # start_vllm_server "$CURRENT_MODEL_NAME"
-        # wait_for_server || { echo "Server failed to start, skipping to next iteration."; shutdown_vllm_server; continue; }
 
-        # echo "Running the normal choice inference script..."
-        # python normal_choice_infer_api2.py --group_name "$GROUP" --model_name "$CURRENT_MODEL_NAME" --short_model_name "$CURRENT_SHORT_MODEL_NAME"
-        # CLIENT_EXIT_CODE=$?
-        # echo "Client script finished with exit code $CLIENT_EXIT_CODE."
-
-        # shutdown_vllm_server
-        # echo "--- Stage 1 Complete ---"
-        # echo
-
-
-        # # --- STAGE 2: Generate Wrong Answers & Finetune ---
-        # echo "--- Stage 2: Generating Wrong Answers and Training ---"
-        # echo "Identifying wrong answers..."
-        # python indentify_wrong_answer3.py --group_name "$GROUP" --model_name "$CURRENT_MODEL_NAME" --short_model_name "$CURRENT_SHORT_MODEL_NAME"
-        # echo "Done generating wrong answers."
-        # echo
-
-        echo "Starting unlearn..."
-        # Note: The original script specifies CUDA_VISIBLE_DEVICES=2,3 for this step.
-        # CUDA_VISIBLE_DEVICES=0,1 accelerate launch --config_file config/qwen_acc_2process_faster.yaml -m train.sft_wrong_7 --group_name "$GROUP" --model_name "$CURRENT_MODEL_NAME" --short_model_name "$CURRENT_SHORT_MODEL_NAME"
-        CUDA_VISIBLE_DEVICES=0,1,2,3 python -m train.sft_correct --group_name "$GROUP" --model_name "$CURRENT_MODEL_NAME" --short_model_name "$CURRENT_SHORT_MODEL_NAME"
+        echo "Starting unlearn correct..."
+        CUDA_VISIBLE_DEVICES=0,1 python -m train.unlearn_correct --group_name "$GROUP" --model_name "$CURRENT_MODEL_NAME" --short_model_name "$CURRENT_SHORT_MODEL_NAME"
         echo "Training completed."
-        echo "--- Stage 2 Complete ---"
+        echo "--- Stage 1 Complete ---"
         echo
-
-
-        # # --- STAGE 3: Inference with Perturbed Model ---
-        # echo "--- Stage 3: Running Inference on Perturbed Model ---"
-        # start_vllm_server "$PERTURB_MODEL_PATH" "$CURRENT_SHORT_MODEL_NAME"
-        # wait_for_server || { echo "Server failed to start, skipping to next iteration."; shutdown_vllm_server; continue; }
-
-        # echo "Running the perturbed model inference script..."
-        # python perturb_infer_api3.py --group_name "$GROUP" --model_name "$CURRENT_MODEL_NAME" --short_model_name "$CURRENT_SHORT_MODEL_NAME"
-        # CLIENT_EXIT_CODE=$?
-        # echo "Client script finished with exit code $CLIENT_EXIT_CODE."
-
-        # shutdown_vllm_server
-        # echo "--- Stage 3 Complete ---"
-        # echo
-
-        # # --- STAGE 4: Cleanup ---
-        # echo "--- Stage 4: Cleaning up generated model files ---"
-        # if [ -d "$PERTURB_MODEL_PATH" ]; then
-        #     echo "Deleting directory: $PERTURB_MODEL_PATH"
-        #     rm -rf "$PERTURB_MODEL_PATH"
-        #     echo "Cleanup complete."
-        # else
-        #     echo "Directory not found, skipping deletion: $PERTURB_MODEL_PATH"
-        # fi
-        # echo "--- Stage 4 Complete ---"
-        # echo
 
 
         echo "=============================================================================="

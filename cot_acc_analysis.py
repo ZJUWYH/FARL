@@ -1,8 +1,4 @@
-# cd memory-perturb
-# conda activate cot
-# CUDA_VISIBLE_DEVICES=0,1,2,3 python indentify_wrong_answer2.py --dataset_field nutrition --model_name deepseek-ai/DeepSeek-R1-Distill-Llama-8B --short_model_name r1llama 
-# 2. use llm as judge to extract answer, add the "answer without thinking", and then filter the correct ones, <think>\n\n<think> fix
-# 3. add an augment to only calculate the accuracy, change the dataset to group fields，add different dataset, update the answer extract method
+
 
 from datasets import load_dataset, Dataset
 import os
@@ -44,6 +40,35 @@ MAX_TOKENS = 5000
 from openai import OpenAI
 
 CLIENT = OpenAI()
+
+def llm_extract_answer(response, client = CLIENT):
+    """
+    Extract the final answer from the LLM response.
+    The response is expected to be a string containing the final answer in the format:
+    'The correct answer is (A/B/C/D).'
+    """
+    prompt = f"""You are a helpful assistant tasked with extracting the final answer from a multiple-choice question response.
+    The response is delimited by triple backticks.
+    ```
+    {response}
+    ```
+    ONLY return the letter of the final answer, without any additional text or explanation. If you cannot determine a clear answer, respond N.
+    """
+    message = [
+        {"role": "system", "content": "You are a helpful assistant that extracts the final answer from a given text."},
+        {"role": "user", "content": prompt}
+    ]
+    response = client.chat.completions.create(
+        model="gpt-4o-mini",
+        messages=message,
+        max_tokens=10,
+        temperature=0.0
+    )
+    answer = response.choices[0].message.content.strip()[0]
+    if answer.upper() in CHOICE_LABELS:
+        return CHOICE_LABELS.index(answer.upper())
+    print("Failed to extract a valid answer, returning None.")
+    return -1
 
 import re
 def _regex_extract_answer(text: str) -> str:
@@ -124,35 +149,6 @@ def llm_extract_answer_v2(response, client = CLIENT):
         # 这里静默失败，走到统一返回 None
         pass
 
-    return -1
-
-def llm_extract_answer(response, client = CLIENT):
-    """
-    Extract the final answer from the LLM response.
-    The response is expected to be a string containing the final answer in the format:
-    'The correct answer is (A/B/C/D).'
-    """
-    prompt = f"""You are a helpful assistant tasked with extracting the final answer from a multiple-choice question response.
-    The response is delimited by triple backticks.
-    ```
-    {response}
-    ```
-    ONLY return the letter of the final answer, without any additional text or explanation. If you cannot determine a clear answer, respond N.
-    """
-    message = [
-        {"role": "system", "content": "You are a helpful assistant that extracts the final answer from a given text."},
-        {"role": "user", "content": prompt}
-    ]
-    response = client.chat.completions.create(
-        model="gpt-4o-mini",
-        messages=message,
-        max_tokens=10,
-        temperature=0.0
-    )
-    answer = response.choices[0].message.content.strip()[0]
-    if answer.upper() in CHOICE_LABELS:
-        return CHOICE_LABELS.index(answer.upper())
-    print("Failed to extract a valid answer, returning None.")
     return -1
 
 def tokenizer_fn(example, tokenizer):
@@ -242,13 +238,6 @@ if __name__ == "__main__":
         # default=SHORT_MODEL_NAME,
         help="The short name of the model for vLLM."
     )
-    parser.add_argument(
-        "--only_calculate_accuracy",
-        type=bool,
-        required=False,
-        default=False,
-        help="Only calculate the accuracy."
-    )
     args = parser.parse_args()
     DATASET_NAME = args.dataset_name
     GROUP_NAME = args.group_name
@@ -256,115 +245,31 @@ if __name__ == "__main__":
     SHORT_MODEL_NAME = args.short_model_name
     print(f"Loading dataset {DATASET_NAME} with group {GROUP_NAME} and split {DATASET_SPLIT}...")
     INFER_RESULTS_PATH = f"./res2/{DATASET_NAME}_{GROUP_NAME}_{DATASET_SPLIT}_{SHORT_MODEL_NAME}_answers.json"
-    wandb.init(project="MemoryPerturbGroup", name=f"{DATASET_NAME}_{GROUP_NAME}_{DATASET_SPLIT}_{SHORT_MODEL_NAME}", group="wrong_answer")
+    SAVE_PATH = f"./res2/{DATASET_NAME}_{GROUP_NAME}_{DATASET_SPLIT}_{SHORT_MODEL_NAME}_perturbed_answers.json"
+    wandb.init(project="MemoryPerturbGroup", name=f"{DATASET_NAME}_{GROUP_NAME}_{DATASET_SPLIT}_{SHORT_MODEL_NAME}", group="cot_quality_analysis")
     wandb.config.update(args)
 
     tokenizer = AutoTokenizer.from_pretrained(MODEL_NAME)
-    model = AutoModelForCausalLM.from_pretrained(
-    MODEL_NAME, torch_dtype=torch.bfloat16).to(device)
-    model = torch.nn.DataParallel(model, device_ids=[0, 1, 2, 3])
 
     with open(INFER_RESULTS_PATH, "r") as f:
         data = json.load(f)
     dataset = Dataset.from_list(data)
-    dataset = dataset.map(lambda x: {"answer_w_think": llm_extract_answer_v2(x["model_answer"])})
-    if args.only_calculate_accuracy:
+    # if save_path exists:
+    if os.path.exists(SAVE_PATH):
+        with open(SAVE_PATH, "r") as f:
+            data = json.load(f)
+        correct_dataset = Dataset.from_list(data)
+        accuracy = len(correct_dataset) / len(dataset)
+        print(f"accuracy: {accuracy}")
+        wandb.log({"accuracy": accuracy})
+    else:
+        dataset = dataset.map(lambda x: {"answer_w_think": llm_extract_answer_v2(x["model_answer"])})
         correct_dataset = dataset.filter(lambda x: x["answer_w_think"] == x["answer"])  # 只保留有正确答案的样本
         print(f"accuracy: {len(correct_dataset)}/{len(dataset)} = {len(correct_dataset)/len(dataset)}")
         wandb.log({"accuracy": len(correct_dataset) / len(dataset)})
-        print("Only calculate the accuracy.")
-        exit()
+    # count the number of mean token length of model answer and model answer with thinking
+    mean_token_length = sum(len(tokenizer.encode(x["model_answer"])) for x in dataset) / len(dataset)
+    print(f"mean token length: {mean_token_length}")
+    wandb.log({"mean_token_length": mean_token_length})
+    print("cot quality analysis done.")
 
-
-    # dataset = load_dataset(DATASET_NAME, DATASET_FIELD, split=DATASET_SPLIT)
-    # dataset = dataset.select(range(DATASET_SIZE)) if DATASET_SIZE < len(dataset) else dataset
-    # import re
-    # def extract_answer(str):
-    #     match = re.search(r'.*the correct answer is \(([a-zA-Z])', str, re.IGNORECASE)
-    #     letter = match.group(1).upper() if match else "None"
-    #     if letter not in ["A", "B", "C", "D", "E", "F", "G", "H"]:
-    #         letter = "None"
-    #     return letter
-
-
-
-    tokenizerd_dataset = dataset.map(
-        tokenizer_fn,
-        fn_kwargs={"tokenizer": tokenizer},
-        batched=True,
-        remove_columns=["correct_choice", "formatted_prompt",],
-        desc="Tokenizing dataset",
-        batch_size=BATCH_SIZE,
-    )
-
-    perturb_ds = tokenizerd_dataset.map(generate_perturb_answer, fn_kwargs={"model": model},batched=True, batch_size=BATCH_SIZE, remove_columns = ['input_ids', 'attention_mask'])
-
-        # Calculate accuracy for answer_wo_think and answer_w_think
-    correct_wo_think = sum(1 for pred, true in zip(perturb_ds['answer_wo_think'], perturb_ds['answer']) if pred == true)
-    correct_w_think = sum(1 for pred, true in zip(perturb_ds['answer_w_think'], perturb_ds['answer']) if pred == true)
-    total = len(perturb_ds['answer'])
-
-    acc_wo_think = correct_wo_think / total
-    acc_w_think = correct_w_think / total
-
-    print(f"Accuracy without thinking: {acc_wo_think:.4f}")
-    print(f"Accuracy with thinking: {acc_w_think:.4f}")
-
-    # Calculate the 4 transition ratios
-    # Case 1: answer_wo_think wrong, answer_w_think wrong
-    wrong_wrong = sum(1 for wo, w, true in zip(perturb_ds['answer_wo_think'], perturb_ds['answer_w_think'], perturb_ds['answer']) 
-                    if wo != true and w != true)
-
-    # Case 2: answer_wo_think wrong, answer_w_think correct
-    wrong_correct = sum(1 for wo, w, true in zip(perturb_ds['answer_wo_think'], perturb_ds['answer_w_think'], perturb_ds['answer']) 
-                        if wo != true and w == true)
-
-    # Case 3: answer_wo_think correct, answer_w_think wrong
-    correct_wrong = sum(1 for wo, w, true in zip(perturb_ds['answer_wo_think'], perturb_ds['answer_w_think'], perturb_ds['answer']) 
-                        if wo == true and w != true)
-
-    # Case 4: answer_wo_think correct, answer_w_think correct
-    correct_correct = sum(1 for wo, w, true in zip(perturb_ds['answer_wo_think'], perturb_ds['answer_w_think'], perturb_ds['answer']) 
-                        if wo == true and w == true)
-
-    # Calculate ratios
-    ratio_wrong_wrong = wrong_wrong / total
-    ratio_wrong_correct = wrong_correct / total
-    ratio_correct_wrong = correct_wrong / total
-    ratio_correct_correct = correct_correct / total
-
-    print(f"\n=== Transition Ratios ===")
-    print(f"Wrong → Wrong: {ratio_wrong_wrong:.4f} ({wrong_wrong}/{total})")
-    print(f"Wrong → Correct: {ratio_wrong_correct:.4f} ({wrong_correct}/{total})")
-    print(f"Correct → Wrong: {ratio_correct_wrong:.4f} ({correct_wrong}/{total})")
-    print(f"Correct → Correct: {ratio_correct_correct:.4f} ({correct_correct}/{total})")
-
-    wandb.log({
-        "acc_wo_think": acc_wo_think,
-        "acc_w_think": acc_w_think,
-        "ratio_wrong_wrong": ratio_wrong_wrong,
-        "ratio_wrong_correct": ratio_wrong_correct,
-        "ratio_correct_wrong": ratio_correct_wrong,
-        "ratio_correct_correct": ratio_correct_correct
-    })
-
-    # filter the answer_w_think correct ones
-    perturb_ds = perturb_ds.filter(lambda x: x["answer_w_think"] == x["answer"])
-
-
-    # 保存处理后的数据集到磁盘
-    SAVE_PATH = f"./res2/{DATASET_NAME}_{GROUP_NAME}_{DATASET_SPLIT}_{SHORT_MODEL_NAME}_perturbed_answers.json"
-    print(f"\nSaving dataset to disk at {SAVE_PATH}...")
-    
-    # 确保目录存在
-    import os
-    import json
-    os.makedirs(os.path.dirname(SAVE_PATH), exist_ok=True)
-    
-    with open(SAVE_PATH, 'w', encoding='utf-8') as f:
-        json.dump(perturb_ds.to_list(), f, indent=4, ensure_ascii=False)
-    
-    print("Done!")
-
-
-    

@@ -1,8 +1,7 @@
+# This is the script that change verl ckpt to huggingface model
 
-# bash /data/yuhui/8/memory-perturb/script/ckpt_to_huggingface.sh
-
-LOCAL_DIR=/data/yuhui/8/rl-test/ckpt_rl_npo/r1llama/MathLogic/global_step_126/actor
-TARGET_DIR=/data/yuhui/8/rl-test/ckpt_rl_npo/r1llama/MathLogic
+LOCAL_DIR="" # enter the path ended with "/actor"
+TARGET_DIR=""
 
 # only clear the first depth of the target dir
 # echo "clear target dir"

@@ -1,8 +1,4 @@
-# screen -dmS mmlu bash -c "CUDA_VISIBLE_DEVICES=6,7 python -m train.sft_wrong_unlearn2"
-# CUDA_VISIBLE_DEVICES=6,7 python -m train.sft_wrong_unlearn2
-# cd memory-perturb
-# conda activate cot
-# this version modify the template hope we get better performance, and this script is for qwen3-8b
+
 import os
 import torch
 from datasets import load_dataset
@@ -75,7 +71,7 @@ def prepare_fsdp(model, accelerator):
         model = FSDP(model, **kwargs)
     model.eval()
     return model
-def selective_log_softmax(logits, index) -> torch.Tensor:
+
     """
     A memory-efficient implementation of the common `log_softmax -> gather` operation.
 
@@ -109,212 +105,19 @@ def selective_log_softmax(logits, index) -> torch.Tensor:
         per_token_logps = torch.stack(per_token_logps)
     return per_token_logps
 
-class NPOTrainer(Trainer):
-    def __init__(self, *args, **kwargs):        
-        self.ref_model = copy.deepcopy(self.model).eval()
-        if self.ref_model is not None:
-            if self.is_fsdp_enabled:
-                self.ref_model = prepare_fsdp(self.ref_model, self.accelerator)
-            else:
-                self.ref_model = self.accelerator.prepare_model(self.ref_model, evaluation_mode=True)
 
-        super().__init__(*args, **kwargs)
-
-    # def _get_per_token_logps_and_entropies(
-    #     self, model, input_ids, attention_mask, logits_to_keep, batch_size=None, compute_entropy=False
-    # ) -> dict[str, Optional[torch.Tensor]]:
-    #     """Compute log‐probs and (optionally) entropies for each token."""
-    #     batch_size = batch_size or input_ids.size(0)  # Chunk inputs into smaller batches to reduce memory peak
-    #     all_logps = []
-    #     all_entropies = []
-    #     for start in range(0, input_ids.size(0), batch_size):
-    #         input_ids_batch = input_ids[start : start + batch_size]
-    #         attention_mask_batch = attention_mask[start : start + batch_size]
-
-    #         # We add 1 to `logits_to_keep` because the last logits of the sequence is later excluded
-    #         logits = model(
-    #             input_ids=input_ids_batch,
-    #             attention_mask=attention_mask_batch,
-    #             logits_to_keep=logits_to_keep + 1,
-    #         ).logits
-    #         logits = logits[:, :-1, :]  # (B, L-1, V), exclude the last logit: it corresponds to the next token pred
-    #         # Divide logits by sampling temperature.
-    #         # See https://huggingface.co/blog/the_n_implementation_details_of_rlhf_with_ppo#policy-training-implementation-details
-    #         logits = logits / self.temperature
-
-    #         completion_ids = input_ids_batch[:, -logits_to_keep:]
-    #         logps = selective_log_softmax(logits, completion_ids)  # compute logprobs
-    #         # logp at every token position
-    #         all_logps.append(logps)
-
-    #     logps = torch.cat(all_logps, dim=0)
-
-    #     return {"logps": logps}
-
-    
-    # def _prepare_inputs(self, inputs: dict[str, Union[torch.Tensor, Any]]) -> dict[str, Union[torch.Tensor, Any]]:
-    #     if self.ref_model is not None:
-    #         ref_per_token_logps = self._get_per_token_logps_and_entropies(
-    #             self.ref_model, prompt_completion_ids, attention_mask, logits_to_keep
-    #         )["logps"]
-    #     return super()._prepare_inputs(inputs)
-
-    def compute_logps(self, model: torch.nn.Module, inputs: Dict[str, Union[torch.Tensor, Any]]) -> torch.Tensor:
-        """
-        Computes average log probabilities of the tokens given model inputs.
-
-        Args:
-            model (torch.nn.Module): Model to compute outputs.
-            inputs (Dict[str, Union[torch.Tensor, Any]]): Inputs to the model, including 'input_ids', 'attention_mask'.
-
-        Returns:
-            torch.Tensor: Average log probabilities of the input tokens.
-        """
-        outputs = model(**inputs)  # Forward pass
-        logits = outputs.logits  # (batch_size, sequence_length, vocab_size)
-        input_ids = inputs.get('input_ids')
-
-        # Shift input_ids and mask to align with predictions
-        labels = inputs['labels']  # (batch_size, sequence_length)
-        mask = (labels != -100)[:, 1:]  # Shifted mask: (batch_size, sequence_length - 1)
-
-        # Compute log softmax on logits (excluding the last time step)
-        log_probs = logits[:, :-1, :].log_softmax(dim=-1)  # (batch_size, sequence_length - 1, vocab_size)
-
-        # Gather log probabilities for each input token
-        per_token_logps = torch.gather(
-            log_probs, dim=2, index=input_ids[:, 1:].unsqueeze(2)
-        ).squeeze(2)  # (batch_size, sequence_length - 1)
-
-        # Apply mask to per-token log probabilities
-        per_token_logps = per_token_logps * mask
-
-        # Compute average log probabilities
-        total_logps = per_token_logps.sum(dim=1)  # Sum over sequence length
-        total_mask = mask.sum(dim=1)  # Sum over sequence length
-
-        # Avoid division by zero
-        avg_logps = total_logps / torch.clamp(total_mask, min=1)
-
-        return avg_logps
-
-
-    def training_step(
-        self, model: nn.Module, inputs: dict[str, Union[torch.Tensor, Any]], num_items_in_batch=None
-    ) -> torch.Tensor:
-        """
-        Perform a training step on a batch of inputs.
-
-        Subclass and override to inject custom behavior.
-
-        Args:
-            model (`nn.Module`):
-                The model to train.
-            inputs (`Dict[str, Union[torch.Tensor, Any]]`):
-                The inputs and targets of the model.
-
-                The dictionary will be unpacked before being fed to the model. Most models expect the targets under the
-                argument `labels`. Check your model's documentation for all accepted arguments.
-
-        Return:
-            `torch.Tensor`: The tensor with training loss on this batch.
-        """
-        model.train()
-        if hasattr(self.optimizer, "train") and callable(self.optimizer.train):
-            self.optimizer.train()
-
-        inputs = self._prepare_inputs(inputs)
-        # print(f"inputs: {inputs.keys()}")
-        # print(f"inputs: {inputs['labels_correct'][0]}")  # Debugging line to check input IDs
-        if is_sagemaker_mp_enabled():
-            loss_mb = smp_forward_backward(model, inputs, self.args.gradient_accumulation_steps)
-            return loss_mb.reduce_mean().detach().to(self.args.device)
-
-        
-        def backward_hf(loss):
-            if (
-                self.args.torch_empty_cache_steps is not None
-                and self.state.global_step % self.args.torch_empty_cache_steps == 0
-            ):
-                if is_torch_xpu_available():
-                    torch.xpu.empty_cache()
-                elif is_torch_mlu_available():
-                    torch.mlu.empty_cache()
-                elif is_torch_musa_available():
-                    torch.musa.empty_cache()
-                elif is_torch_npu_available():
-                    torch.npu.empty_cache()
-                elif is_torch_mps_available(min_version="2.0"):
-                    torch.mps.empty_cache()
-                elif is_torch_hpu_available():
-                    logger.warning(
-                        "`torch_empty_cache_steps` is set but HPU device/backend does not support empty_cache()."
-                    )
-                else:
-                    torch.cuda.empty_cache()
-
-            kwargs = {}
-
-            # For LOMO optimizers you need to explicitly use the learnign rate
-            if self.args.optim in [OptimizerNames.LOMO, OptimizerNames.ADALOMO]:
-                kwargs["learning_rate"] = self._get_learning_rate()
-
-            if self.args.n_gpu > 1:
-                loss = loss.mean()  # mean() to average on multi-gpu parallel training
-
-            if self.use_apex:
-                with amp.scale_loss(loss, self.optimizer) as scaled_loss:
-                    scaled_loss.backward()
-            else:
-                # Finally we need to normalize the loss for reporting
-                if not self.model_accepts_loss_kwargs and self.compute_loss_func is None:
-                    loss = loss / self.args.gradient_accumulation_steps
-
-                # Turning off loss scaling w.r.t. gradient accumulation when DeepSpeed is enabled
-                # https://github.com/huggingface/transformers/pull/35808
-                if self.accelerator.distributed_type == DistributedType.DEEPSPEED:
-                    kwargs["scale_wrt_gas"] = False
-
-                self.accelerator.backward(loss, **kwargs)
-                return loss.detach()
-        # with self.compute_loss_context_manager():
-        #     loss = self.compute_loss(model, inputs, "correct",num_items_in_batch=num_items_in_batch)
-        # loss_correct = backward_hf(-torch.log(loss))
-        with self.compute_loss_context_manager():
-            neg_prob = self.compute_logps(model, inputs)
-            with torch.no_grad():
-                ref_neg_prob = self.compute_logps(self.ref_model, inputs)
-            log_delta = -(neg_prob - ref_neg_prob)
-            unlearn_loss = torch.log(torch.nn.functional.sigmoid(log_delta))
-            loss = -torch.mean(unlearn_loss)
-        loss = backward_hf(loss)
-        
-        del inputs, neg_prob, ref_neg_prob, log_delta
-
-        return loss
-
-
-DATASET_NAME = "cais/mmlu"
 DATASET_SPLIT = "test"
 def clear_directory(path):
     for filename in os.listdir(path):
         file_path = os.path.join(path, filename)
         try:
             if os.path.isfile(file_path) or os.path.islink(file_path):
-                os.unlink(file_path)  # 删除文件或符号链接
+                os.unlink(file_path)  
             elif os.path.isdir(file_path):
-                shutil.rmtree(file_path)  # 删除子目录及其内容
+                shutil.rmtree(file_path)  
         except Exception as e:
             print(f'error: {e}')
 
-# Configuration optimized for H100 80GB
-MODEL_NAME = "deepseek-ai/DeepSeek-R1-Distill-Llama-8B"# 这里填写你的模型名称
-SHORT_MODEL_NAME = "r1llama"  # 短名称，用于vLLM
-# OUTPUT_DIR = f"./ckpt/{DATASET_NAME}_{DATASET_FIELD}_{DATASET_SPLIT}_{SHORT_MODEL_NAME}_perturbed" # Output directory for model checkpoints
-# # Ensure output directory exists
-# if os.path.exists(OUTPUT_DIR):
-#     clear_directory(OUTPUT_DIR)  # Clear existing directory if it exists
-# WRONG_ANSWER_FILE = f"./res/{DATASET_NAME}_{DATASET_FIELD}_{DATASET_SPLIT}_{SHORT_MODEL_NAME}_perturbed_answers.json"  # Path to the wrong answers file
 MAX_LENGTH = 512  # Increased max length for H100
 
 # LoRA Configuration - Higher rank for better performance
@@ -555,38 +358,12 @@ def tokenize_mmlu_example(example: Dict, tokenizer) -> dict:
         raise ValueError(f"Unsupported tokenizer: {tokenizer.name_or_path}")
 
     
-
-    # def mask_except_continuous_subseq(target_sequence, full_sequence):
-    #     n, m = len(full_sequence), len(target_sequence)
-    #     for i in range(n - m + 1):
-    #         if full_sequence[i:i+m] == target_sequence:
-    #             return [-100]*i + target_sequence + [-100]*(n - i - m)
-    #     print(f"Warning: Target sequence not found")
-    #     return [-100]*n
-    
-    # # labels_correct_masked = mask_except_continuous_subseq(tokenized_target_correct["input_ids"], labels_correct)
-    # # labels_wrong_masked = mask_except_continuous_subseq(tokenized_target_wrong["input_ids"], labels_wrong)
-    # # print(f'tokenized_target_correct: {tokenized_target_correct["input_ids"]}')
-    # # print(f"labels_correct: {labels_correct}")
-    # # print(f"labels_correct_masked: {labels_correct_masked}")
-    # # print(f'tokenized_target_wrong: {tokenized_target_wrong["input_ids"]}')
-    # print(f"full text wrong: {full_tokenized_wrong['input_ids']}")
-    # print(f"labels_wrong: {labels_wrong}")
-    # # print(f"labels_wrong_masked: {labels_wrong_masked}")
     return {
         "input_ids": full_tokenized_correct["input_ids"],
         "attention_mask": full_tokenized_correct["attention_mask"],
         "labels": labels_correct,
     }
-    
-    # return {
-    #     # "input_ids_correct": full_tokenized_correct["input_ids"],
-    #     # "attention_mask_correct": full_tokenized_correct["attention_mask"],
-    #     # "labels_correct": labels_correct,
-    #     "input_ids": full_tokenized_wrong["input_ids"],
-    #     "attention_mask": full_tokenized_wrong["attention_mask"],
-    #     "labels": labels_wrong,
-    # }
+
 
 def main():
     parser = argparse.ArgumentParser(description="Run inference with a specified MMLU dataset field.")
@@ -609,6 +386,8 @@ def main():
         help="The short name of the model for vLLM."
     )
     args = parser.parse_args()
+    DATASET_NAME = "cais/mmlu"
+    DATASET_SPLIT = "test"
     GROUP_NAME = args.group_name
     MODEL_NAME =  args.model_name
     SHORT_MODEL_NAME =  args.short_model_name
@@ -646,26 +425,6 @@ def main():
         # device_map="auto",
         torch_dtype=torch.bfloat16,  # Use BF16 for H100 efficiency
     )
-    # if USE_QUANTIZATION:
-    #     model = AutoModelForCausalLM.from_pretrained(
-    #         MODEL_NAME,
-    #         quantization_config=BNB_CONFIG,
-    #         device_map="auto",
-    #         torch_dtype=torch.bfloat16,
-    #         trust_remote_code=True
-    #     )
-    #     # Prepare model for k-bit training
-    #     model = prepare_model_for_kbit_training(model)
-    # else:
-    #     # Full precision loading for H100 - better performance
-    #     model = AutoModelForCausalLM.from_pretrained(
-    #         MODEL_NAME,
-    #         device_map="auto",
-    #         torch_dtype=torch.bfloat16,  # Use BF16 for H100 efficiency
-    #         # trust_remote_code=True,
-    #         # attn_implementation="flash_attention_2",  # Use FlashAttention2 if available
-    #     )
-    # model = prepare_model_for_kbit_training(model)
 
     # Add LoRA adapters
     print("Adding LoRA adapters...")
@@ -761,17 +520,6 @@ def main():
         # adam_epsilon=1e-8,
     )
     
-    # Initialize trainer
-    # trainer = UnlearnTrainer(
-    #     model=model,
-    #     args=training_args,
-    #     train_dataset=train_dataset,
-    #     eval_dataset=eval_dataset,
-    #     data_collator=data_collator,
-    #     tokenizer=tokenizer,
-    #     compute_metrics=compute_metrics,  # Add the metrics function
-    #      preprocess_logits_for_metrics=preprocess_logits_for_metrics,
-    # )
 
     trainer = Trainer(
         model=model,
