@@ -1,12 +1,27 @@
 
 # Reasoning or Retrieval? A Study of Answer Attribution on Large Reasoning Models
 
-This is the offical implemation of "Reasoning or Retrieval? A Study of Answer Attribution on Large Reasoning Models".
+This is the offical implemation of "[Reasoning or Retrieval? A Study of Answer Attribution on Large Reasoning Models](https://openreview.net/forum?id=DfxkLdy2Cd)", ICLR 2026.
 <!-- ![](pipeline.png) -->
 <img src="frameworkv2.png" width="60%">
 
-## 🛠️ Setup
+## Table of Contents
 
+- [🛠️ Setup](#setup)
+  - [Environment Setup](#environment-setup)
+  - [API Configuration](#api-configuration)
+    - [OpenAI](#openai)
+    - [Huggingface](#huggingface)
+    - [Weights & Biases](#weights--biases)
+- [📊 Experiment](#experiment)
+  - [Pertubation Experiment](#pertubation-experiment)
+  - [SFT](#sft)
+  - [GRPO](#grpo)
+  - [FARL](#farl)
+  - [Model Evaluation](#model-evaluation)
+- [📝 Citation](#citation)
+
+## 🛠️ Setup
 ### Environment Setup
 Create a virtual environment using Conda and intall packages:
 ```bash
@@ -82,7 +97,7 @@ bash script/mmlu_verl_format.sh
 bash script/run_grpo.sh
 ```
 
-### RARL
+### FARL
 1. Add the following loss function into 'verl/verl/trainer/ppo/core_algos.py':
 ```python
 from typing import Tuple
@@ -153,4 +168,17 @@ bash script/ckpt_to_huggingface.sh
 2. Add the model path into evaluation script and run it:
 ```bash
 bash script/cot_acc.sh
+```
+
+<a id="citation"></a>
+## 📝 Citation
+If you find this work useful, please cite:
+```
+@inproceedings{wang2026reasoning,
+title={Reasoning or Retrieval? A Study of Answer Attribution on Large Reasoning Models},
+author={Yuhui Wang and Changjiang Li and Guangke Chen and Jiacheng Liang and Ting Wang},
+booktitle={The Fourteenth International Conference on Learning Representations},
+year={2026},
+url={https://openreview.net/forum?id=DfxkLdy2Cd}
+}
 ```
